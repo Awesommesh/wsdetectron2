@@ -410,7 +410,7 @@ class ResNet(Backbone):
             name = "res" + str(i + 2)
             stage = blocks
 
-            self.add_module(name, stage)
+            self.add_module(name, nn.Sequential(*blocks))
             self.runtime_depth[name] = 0
             self.stage_names.append(name)
             self.stages.append(stage)
