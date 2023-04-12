@@ -2,6 +2,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 
 import logging
+import random
 import numpy as np
 import time
 import weakref
@@ -13,7 +14,7 @@ import detectron2.utils.comm as comm
 from detectron2.utils.events import EventStorage, get_event_storage
 from detectron2.utils.logger import _log_api_usage
 
-__all__ = ["HookBase", "TrainerBase", "SimpleTrainer", "AMPTrainer"]
+__all__ = ["HookBase", "TrainerBase", "SimpleTrainer", "WSTrainer", "AMPTrainer"]
 
 
 class HookBase:
@@ -242,9 +243,7 @@ class SimpleTrainer(TrainerBase):
     or write your own training loop.
     """
 
-    def __init__(
-        self, model, data_loader, optimizer, gather_metric_period=1, zero_grad_before_forward=False
-    ):
+    def __init__(self, model, data_loader, optimizer, gather_metric_period=1):
         """
         Args:
             model: a torch Module. Takes a data from data_loader and returns a
@@ -253,7 +252,6 @@ class SimpleTrainer(TrainerBase):
             optimizer: a torch optimizer.
             gather_metric_period: an int. Every gather_metric_period iterations
                 the metrics are gathered from all the ranks to rank 0 and logged.
-            zero_grad_before_forward: whether to zero the gradients before the forward.
         """
         super().__init__()
 
@@ -271,7 +269,6 @@ class SimpleTrainer(TrainerBase):
         self._data_loader_iter_obj = None
         self.optimizer = optimizer
         self.gather_metric_period = gather_metric_period
-        self.zero_grad_before_forward = zero_grad_before_forward
 
     def run_step(self):
         """
@@ -285,13 +282,6 @@ class SimpleTrainer(TrainerBase):
         data = next(self._data_loader_iter)
         data_time = time.perf_counter() - start
 
-        if self.zero_grad_before_forward:
-            """
-            If you need to accumulate gradients or do something similar, you can
-            wrap the optimizer with your custom `zero_grad()` method.
-            """
-            self.optimizer.zero_grad()
-
         """
         If you want to do something with the losses, you can wrap the model.
         """
@@ -301,12 +291,12 @@ class SimpleTrainer(TrainerBase):
             loss_dict = {"total_loss": loss_dict}
         else:
             losses = sum(loss_dict.values())
-        if not self.zero_grad_before_forward:
-            """
-            If you need to accumulate gradients or do something similar, you can
-            wrap the optimizer with your custom `zero_grad()` method.
-            """
-            self.optimizer.zero_grad()
+
+        """
+        If you need to accumulate gradients or do something similar, you can
+        wrap the optimizer with your custom `zero_grad()` method.
+        """
+        self.optimizer.zero_grad()
         losses.backward()
 
         self.after_backward()
@@ -398,6 +388,173 @@ class SimpleTrainer(TrainerBase):
         super().load_state_dict(state_dict)
         self.optimizer.load_state_dict(state_dict["optimizer"])
 
+class WSTrainer(TrainerBase):
+    """
+    A simple trainer for the most common type of task:
+    single-cost single-optimizer single-data-source iterative optimization,
+    optionally using data-parallelism.
+    It assumes that every step, you:
+
+    1. Compute the loss with a data from the data_loader.
+    2. Compute the gradients with the above loss.
+    3. Update the model with the optimizer.
+
+    All other tasks during training (checkpointing, logging, evaluation, LR schedule)
+    are maintained by hooks, which can be registered by :meth:`TrainerBase.register_hooks`.
+
+    If you want to do anything fancier than this,
+    either subclass TrainerBase and implement your own `run_step`,
+    or write your own training loop.
+    """
+
+    def __init__(self, model, data_loader, optimizer, gather_metric_period=1):
+        """
+        Args:
+            model: a torch Module. Takes a data from data_loader and returns a
+                dict of losses.
+            data_loader: an iterable. Contains data to be used to call model.
+            optimizer: a torch optimizer.
+            gather_metric_period: an int. Every gather_metric_period iterations
+                the metrics are gathered from all the ranks to rank 0 and logged.
+        """
+        super().__init__()
+
+        """
+        We set the model to training mode in the trainer.
+        However it's valid to train a model that's in eval mode.
+        If you want your model (or a submodule of it) to behave
+        like evaluation during training, you can overwrite its train() method.
+        """
+        model.train()
+
+        self.model = model
+        self.data_loader = data_loader
+        # to access the data loader iterator, call `self._data_loader_iter`
+        self._data_loader_iter_obj = None
+        self.optimizer = optimizer
+        self.gather_metric_period = gather_metric_period
+
+    def run_step(self):
+        """
+        Implement the standard training logic described above.
+        """
+        assert self.model.training, "[SimpleTrainer] model was changed to eval mode!"
+        start = time.perf_counter()
+        """
+        If you want to do something with the data, you can wrap the dataloader.
+        """
+        data = next(self._data_loader_iter)
+        data_time = time.perf_counter() - start
+
+        """
+        If you need to accumulate gradients or do something similar, you can
+        wrap the optimizer with your custom `zero_grad()` method.
+        """
+        self.optimizer.zero_grad()
+
+        """
+        Iterate over 4 subnets
+        """
+        subnet_str = ""
+        for _ in range(4):
+            subnet_settings = self.model.backbone.sample_active_subnet()
+            subnet_str += subnet_settings + ", "
+            loss_dict = self.model(data)
+            if isinstance(loss_dict, torch.Tensor):
+                losses = loss_dict
+                loss_dict = {"total_loss": loss_dict}
+            else:
+                losses = sum(loss_dict.values())
+            losses.backward()
+
+            self.after_backward()
+
+            self._write_metrics(loss_dict, data_time)
+
+        """
+        If you need gradient clipping/scaling or other processing, you can
+        wrap the optimizer with your custom `step()` method. But it is
+        suboptimal as explained in https://arxiv.org/abs/2006.15704 Sec 3.2.4
+        """
+        self.optimizer.step()
+
+    @property
+    def _data_loader_iter(self):
+        # only create the data loader iterator when it is used
+        if self._data_loader_iter_obj is None:
+            self._data_loader_iter_obj = iter(self.data_loader)
+        return self._data_loader_iter_obj
+
+    def reset_data_loader(self, data_loader_builder):
+        """
+        Delete and replace the current data loader with a new one, which will be created
+        by calling `data_loader_builder` (without argument).
+        """
+        del self.data_loader
+        data_loader = data_loader_builder()
+        self.data_loader = data_loader
+        self._data_loader_iter_obj = None
+
+    def _write_metrics(
+        self,
+        loss_dict: Mapping[str, torch.Tensor],
+        data_time: float,
+        prefix: str = "",
+    ) -> None:
+        if (self.iter + 1) % self.gather_metric_period == 0:
+            SimpleTrainer.write_metrics(loss_dict, data_time, prefix)
+
+    @staticmethod
+    def write_metrics(
+        loss_dict: Mapping[str, torch.Tensor],
+        data_time: float,
+        prefix: str = "",
+    ) -> None:
+        """
+        Args:
+            loss_dict (dict): dict of scalar losses
+            data_time (float): time taken by the dataloader iteration
+            prefix (str): prefix for logging keys
+        """
+        metrics_dict = {k: v.detach().cpu().item() for k, v in loss_dict.items()}
+        metrics_dict["data_time"] = data_time
+
+        # Gather metrics among all workers for logging
+        # This assumes we do DDP-style training, which is currently the only
+        # supported method in detectron2.
+        all_metrics_dict = comm.gather(metrics_dict)
+
+        if comm.is_main_process():
+            storage = get_event_storage()
+
+            # data_time among workers can have high variance. The actual latency
+            # caused by data_time is the maximum among workers.
+            data_time = np.max([x.pop("data_time") for x in all_metrics_dict])
+            storage.put_scalar("data_time", data_time)
+
+            # average the rest metrics
+            metrics_dict = {
+                k: np.mean([x[k] for x in all_metrics_dict]) for k in all_metrics_dict[0].keys()
+            }
+            total_losses_reduced = sum(metrics_dict.values())
+            if not np.isfinite(total_losses_reduced):
+                raise FloatingPointError(
+                    f"Loss became infinite or NaN at iteration={storage.iter}!\n"
+                    f"loss_dict = {metrics_dict}"
+                )
+
+            storage.put_scalar("{}total_loss".format(prefix), total_losses_reduced)
+            if len(metrics_dict) > 1:
+                storage.put_scalars(**metrics_dict)
+
+    def state_dict(self):
+        ret = super().state_dict()
+        ret["optimizer"] = self.optimizer.state_dict()
+        return ret
+
+    def load_state_dict(self, state_dict):
+        super().load_state_dict(state_dict)
+        self.optimizer.load_state_dict(state_dict["optimizer"])
 
 class AMPTrainer(SimpleTrainer):
     """
@@ -411,15 +568,13 @@ class AMPTrainer(SimpleTrainer):
         data_loader,
         optimizer,
         gather_metric_period=1,
-        zero_grad_before_forward=False,
         grad_scaler=None,
         precision: torch.dtype = torch.float16,
         log_grad_scaler: bool = False,
     ):
         """
         Args:
-            model, data_loader, optimizer, gather_metric_period, zero_grad_before_forward:
-                same as in :class:`SimpleTrainer`.
+            model, data_loader, optimizer, gather_metric_period: same as in :class:`SimpleTrainer`.
             grad_scaler: torch GradScaler to automatically scale gradients.
             precision: torch.dtype as the target precision to cast to in computations
         """
@@ -428,9 +583,7 @@ class AMPTrainer(SimpleTrainer):
             assert not (model.device_ids and len(model.device_ids) > 1), unsupported
         assert not isinstance(model, DataParallel), unsupported
 
-        super().__init__(
-            model, data_loader, optimizer, gather_metric_period, zero_grad_before_forward
-        )
+        super().__init__(model, data_loader, optimizer, gather_metric_period)
 
         if grad_scaler is None:
             from torch.cuda.amp import GradScaler
@@ -452,8 +605,6 @@ class AMPTrainer(SimpleTrainer):
         data = next(self._data_loader_iter)
         data_time = time.perf_counter() - start
 
-        if self.zero_grad_before_forward:
-            self.optimizer.zero_grad()
         with autocast(dtype=self.precision):
             loss_dict = self.model(data)
             if isinstance(loss_dict, torch.Tensor):
@@ -462,9 +613,7 @@ class AMPTrainer(SimpleTrainer):
             else:
                 losses = sum(loss_dict.values())
 
-        if not self.zero_grad_before_forward:
-            self.optimizer.zero_grad()
-
+        self.optimizer.zero_grad()
         self.grad_scaler.scale(losses).backward()
 
         if self.log_grad_scaler:

@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from detectron2.layers import (
+from detectron2.detectron2.layers import (
     CNNBlockBase,
     Conv2d,
     DeformConv,
@@ -364,6 +364,11 @@ class ResNet(Backbone):
     Implement :paper:`ResNet`.
     """
 
+    """
+        Elastic Depth Added For Depth R50 Only
+    """
+
+
     def __init__(self, stem, stages, num_classes=None, out_features=None, freeze_at=0):
         """
         Args:
@@ -379,6 +384,7 @@ class ResNet(Backbone):
                 see :meth:`freeze` for detailed explanation.
         """
         super().__init__()
+        self.DEPTH_LIST = [3, 4, 6, 3]
         self.stem = stem
         self.num_classes = num_classes
 
@@ -395,15 +401,17 @@ class ResNet(Backbone):
                 [{"res2": 1, "res3": 2, "res4": 3, "res5": 4}.get(f, 0) for f in out_features]
             )
             stages = stages[:num_stages]
+        self.runtime_depth = dict()
         for i, blocks in enumerate(stages):
             assert len(blocks) > 0, len(blocks)
             for block in blocks:
                 assert isinstance(block, CNNBlockBase), block
 
             name = "res" + str(i + 2)
-            stage = nn.Sequential(*blocks)
+            stage = blocks
 
             self.add_module(name, stage)
+            self.runtime_depth[name] = 0
             self.stage_names.append(name)
             self.stages.append(stage)
 
@@ -446,7 +454,10 @@ class ResNet(Backbone):
         if "stem" in self._out_features:
             outputs["stem"] = x
         for name, stage in zip(self.stage_names, self.stages):
-            x = stage(x)
+            depth_param = self.runtime_depth[name]
+            active_blocks = stage[:len(stage) - depth_param]
+            for block in active_blocks:
+                x = block(x)
             if name in self._out_features:
                 outputs[name] = x
         if self.num_classes is not None:
@@ -456,6 +467,28 @@ class ResNet(Backbone):
             if "linear" in self._out_features:
                 outputs["linear"] = x
         return outputs
+
+    def set_max_net(self):
+        self.set_active_subnet(depth_list=[d-1 for d in self.DEPTH_LIST])
+
+    #d has to be well formatted list of same length as number of stages with valid depth settings
+    def set_active_subnet(self, depth_list=None, **kwargs):
+        for i, name in enumerate(self.stage_names):
+            self.runtime_depth[name] = self.DEPTH_LIST[i]-1-depth_list[i]
+
+    def sample_active_subnet(self):
+        import random
+         # sample depth
+        depth_setting = []
+        for i, name in enumerate(self.stage_names):
+            depth_setting.append(random.choice(self.DEPTH_LIST[i])-1)
+
+        arch_config = {
+            "depth_list": depth_setting
+        }
+
+        self.set_active_subnet(**arch_config)
+        return arch_config
 
     def output_shape(self):
         return {
