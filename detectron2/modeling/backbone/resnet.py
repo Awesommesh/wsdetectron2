@@ -481,7 +481,7 @@ class ResNet(Backbone):
          # sample depth
         depth_setting = []
         for i, name in enumerate(self.stage_names):
-            depth_setting.append(random.choice(self.DEPTH_LIST[i])-1)
+            depth_setting.append(random.choice(np.arange(self.DEPTH_LIST[i])))
 
         arch_config = {
             "depth_list": depth_setting
