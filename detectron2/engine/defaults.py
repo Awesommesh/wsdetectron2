@@ -878,7 +878,9 @@ class DefaultWSTrainer(TrainerBase):
         Returns:
             OrderedDict of results, if evaluation is enabled. Otherwise None.
         """
+        self.model.backbone.set_max_net()
         super().train(self.start_iter, self.max_iter)
+        self.model.backbone.set_max_net()
         if len(self.cfg.TEST.EXPECTED_RESULTS) and comm.is_main_process():
             assert hasattr(
                 self, "_last_eval_results"
@@ -986,6 +988,7 @@ Alternatively, you can call evaluation functions yourself (see Colab balloon tut
         Returns:
             dict: a dict of result metrics
         """
+        model.backbone.set_max_net()
         logger = logging.getLogger(__name__)
         if isinstance(evaluators, DatasetEvaluator):
             evaluators = [evaluators]
