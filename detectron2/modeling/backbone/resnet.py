@@ -384,7 +384,7 @@ class ResNet(Backbone):
                 see :meth:`freeze` for detailed explanation.
         """
         super().__init__()
-        self.DEPTH_LIST = [3, 4, 6, 3]
+        self.DEPTH_LIST = [np.arange(2), np.arange(2), np.arange(2), np.arange(2)]
         self.stem = stem
         self.num_classes = num_classes
 
@@ -469,19 +469,19 @@ class ResNet(Backbone):
         return outputs
 
     def set_max_net(self):
-        self.set_active_subnet(depth_list=[d-1 for d in self.DEPTH_LIST])
+        self.set_active_subnet(depth_list=[max(d) for d in self.DEPTH_LIST])
 
     #d has to be well formatted list of same length as number of stages with valid depth settings
     def set_active_subnet(self, depth_list=None, **kwargs):
         for i, name in enumerate(self.stage_names):
-            self.runtime_depth[name] = self.DEPTH_LIST[i]-1-depth_list[i]
+            self.runtime_depth[name] = max(self.DEPTH_LIST[i])-depth_list[i]
 
     def sample_active_subnet(self):
         import random
          # sample depth
         depth_setting = []
         for i, name in enumerate(self.stage_names):
-            depth_setting.append(random.choice(np.arange(self.DEPTH_LIST[i])))
+            depth_setting.append(random.choice(self.DEPTH_LIST[i]))
 
         arch_config = {
             "depth_list": depth_setting
