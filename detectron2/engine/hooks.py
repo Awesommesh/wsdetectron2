@@ -324,7 +324,7 @@ class LRScheduler(HookBase):
         self._scheduler = scheduler
 
     def before_train(self):
-        self._optimizer = self._optimizer or self.trainer.optimizer
+        self._optimizer = self._optimizer or self.trainer._trainer.optimizer
         if isinstance(self.scheduler, ParamScheduler):
             self._scheduler = LRMultiplier(
                 self._optimizer,
