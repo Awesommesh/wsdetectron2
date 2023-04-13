@@ -407,7 +407,7 @@ class WSTrainer(TrainerBase):
     or write your own training loop.
     """
 
-    def __init__(self, model, data_loader, optimizer, gather_metric_period=1):
+    def __init__(self, model, data_loader, optimizer, dynamic_bs, gather_metric_period=1):
         """
         Args:
             model: a torch Module. Takes a data from data_loader and returns a
@@ -416,6 +416,7 @@ class WSTrainer(TrainerBase):
             optimizer: a torch optimizer.
             gather_metric_period: an int. Every gather_metric_period iterations
                 the metrics are gathered from all the ranks to rank 0 and logged.
+            dynamic_bs: dynamic batch is the number of subnetworks to sample during training
         """
         super().__init__()
 
@@ -433,6 +434,7 @@ class WSTrainer(TrainerBase):
         self._data_loader_iter_obj = None
         self.optimizer = optimizer
         self.gather_metric_period = gather_metric_period
+        self.dynamic_bs = dynamic_bs
 
     def run_step(self):
         """
@@ -456,7 +458,7 @@ class WSTrainer(TrainerBase):
         Iterate over 4 subnets
         """
         subnet_str = ""
-        for _ in range(4):
+        for _ in range(self.dynamic_bs):
             subnet_settings = self.model.backbone.sample_active_subnet()
             subnet_str += str(subnet_settings) + ", "
             loss_dict = self.model(data)

@@ -776,7 +776,7 @@ class DefaultWSTrainer(TrainerBase):
 
         model = create_ddp_model(model, broadcast_buffers=False)
         self._trainer = WSTrainer(
-            model, data_loader, optimizer
+            model, data_loader, optimizer, cfg.WS.DYNAMIC_BS
         )
 
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
