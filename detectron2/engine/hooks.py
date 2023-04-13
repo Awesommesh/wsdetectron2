@@ -360,7 +360,7 @@ class LRScheduler(HookBase):
 
     @property
     def scheduler(self):
-        return self._scheduler or self.trainer._trainer.scheduler
+        return self._scheduler or self.trainer.scheduler
 
     def state_dict(self):
         if isinstance(self.scheduler, _LRScheduler):
