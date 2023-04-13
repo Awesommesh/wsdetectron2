@@ -384,7 +384,7 @@ class ResNet(Backbone):
                 see :meth:`freeze` for detailed explanation.
         """
         super().__init__()
-        self.DEPTH_LIST = [np.arange(2), np.arange(2), np.arange(2), np.arange(2)]
+        self.DEPTH_LIST = [np.arange(3), np.arange(3), np.arange(3), np.arange(3)]
         self.stem = stem
         self.num_classes = num_classes
 
