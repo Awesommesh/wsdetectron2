@@ -124,7 +124,7 @@ def synchronize():
         # This argument is needed to avoid warnings.
         # It's valid only for NCCL backend.
         loggertest.debug(f"nccl barrier")
-        dist.barrier(device_ids=[torch.cuda.current_device()])
+        dist.barrier()
     else:
         loggertest.debug(f"other barrier")
         dist.barrier()
