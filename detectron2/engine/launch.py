@@ -105,7 +105,7 @@ def _distributed_worker(
     try:
         loggertest.debug(f"trying dist.init_process group")
         dist.init_process_group(
-            backend="NCCL" if has_gpu else "GLOO",
+            backend="GLOO",
             init_method=dist_url,
             world_size=world_size,
             rank=global_rank,
