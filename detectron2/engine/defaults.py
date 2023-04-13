@@ -141,6 +141,28 @@ For python-based LazyConfig, use "path.key=value".
         default=None,
         nargs=argparse.REMAINDER,
     )
+
+    parser.add_argument(
+        "--wandb_project_name",
+        type=str,
+        default="wsobjdet",
+        help="Project Name of wandb for logging",
+    )
+
+    parser.add_argument(
+        "--wandb_run_name",
+        type=str,
+        default="wsobjdet_run",
+        help="Run Name of wandb for logging",
+    )
+
+    parser.add_argument(
+        "--wandb_entity",
+        type=str,
+        default="flofa",
+        metavar="N",
+        help="helps in creating a project under teams or personal username",
+    )
     return parser
 
 
