@@ -103,6 +103,7 @@ def _distributed_worker(
         assert num_gpus_per_machine <= torch.cuda.device_count()
     global_rank = machine_rank * num_gpus_per_machine + local_rank
     try:
+        loggertest.debug(f"trying dist.init_process group")
         dist.init_process_group(
             backend="NCCL" if has_gpu else "GLOO",
             init_method=dist_url,
@@ -115,14 +116,15 @@ def _distributed_worker(
         logger = logging.getLogger(__name__)
         logger.error("Process group URL: {}".format(dist_url))
         raise e
-
+    loggertest.debug(f"succeeded init_process group")
     # Setup the local process group.
     comm.create_local_process_group(num_gpus_per_machine)
+    loggertest.debug(f"created local process group")
     if has_gpu:
         torch.cuda.set_device(local_rank)
 
     # synchronize is needed here to prevent a possible timeout after calling init_process_group
     # See: https://github.com/facebookresearch/maskrcnn-benchmark/issues/172
     comm.synchronize()
-
+    loggertest.debug(f"prun main func")
     main_func(*args)
