@@ -324,7 +324,7 @@ class LRScheduler(HookBase):
         self._scheduler = scheduler
 
     def before_train(self):
-        self._optimizer = self._optimizer #bug? doesn't exist or self.trainer.optimizer
+        self._optimizer = self._optimizer or self.trainer.optimizer
         if isinstance(self.scheduler, ParamScheduler):
             self._scheduler = LRMultiplier(
                 self._optimizer,
@@ -360,7 +360,7 @@ class LRScheduler(HookBase):
 
     @property
     def scheduler(self):
-        return self._scheduler or self.trainer.scheduler
+        return self._scheduler or self.trainer._trainer.scheduler
 
     def state_dict(self):
         if isinstance(self.scheduler, _LRScheduler):
