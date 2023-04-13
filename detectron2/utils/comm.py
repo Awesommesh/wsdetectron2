@@ -115,12 +115,20 @@ def synchronize():
     world_size = dist.get_world_size()
     if world_size == 1:
         return
+    import torch.multiprocessing as mp
+    import logging
+    loggertest = mp.get_logger()
+    loggertest.setLevel(logging.DEBUG)
+    loggertest.addHandler(logging.FileHandler(f"synchro_{torch.cuda.current_device()}.log"))
     if dist.get_backend() == dist.Backend.NCCL:
         # This argument is needed to avoid warnings.
         # It's valid only for NCCL backend.
+        loggertest.debug(f"nccl barrier")
         dist.barrier(device_ids=[torch.cuda.current_device()])
     else:
+        loggertest.debug(f"other barrier")
         dist.barrier()
+
 
 
 @functools.lru_cache()
