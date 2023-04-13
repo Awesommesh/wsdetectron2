@@ -94,6 +94,10 @@ def _distributed_worker(
     args,
     timeout=DEFAULT_TIMEOUT,
 ):
+    loggertest = mp.get_logger()
+    loggertest.setLevel(logging.DEBUG)
+    loggertest.addHandler(logging.FileHandler(f"worker_{local_rank}.log"))
+    loggertest.debug(f"Worker {local_rank} started")
     has_gpu = torch.cuda.is_available()
     if has_gpu:
         assert num_gpus_per_machine <= torch.cuda.device_count()
@@ -107,6 +111,7 @@ def _distributed_worker(
             timeout=timeout,
         )
     except Exception as e:
+        loggertest.debug(f"got error {e}")
         logger = logging.getLogger(__name__)
         logger.error("Process group URL: {}".format(dist_url))
         raise e
