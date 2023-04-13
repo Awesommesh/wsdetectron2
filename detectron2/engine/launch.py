@@ -122,7 +122,7 @@ def _distributed_worker(
     loggertest.debug(f"created local process group")
     if has_gpu:
         torch.cuda.set_device(local_rank)
-
+    loggertest.debug(f"set gpu")
     # synchronize is needed here to prevent a possible timeout after calling init_process_group
     # See: https://github.com/facebookresearch/maskrcnn-benchmark/issues/172
     comm.synchronize()
