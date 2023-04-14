@@ -1010,7 +1010,6 @@ Alternatively, you can call evaluation functions yourself (see Colab balloon tut
         Returns:
             dict: a dict of result metrics
         """
-        model.backbone.set_max_net()
         logger = logging.getLogger(__name__)
         if isinstance(evaluators, DatasetEvaluator):
             evaluators = [evaluators]
