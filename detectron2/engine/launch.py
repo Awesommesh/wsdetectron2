@@ -94,16 +94,16 @@ def _distributed_worker(
     args,
     timeout=DEFAULT_TIMEOUT,
 ):
-    loggertest = mp.get_logger()
+    """loggertest = mp.get_logger()
     loggertest.setLevel(logging.DEBUG)
     loggertest.addHandler(logging.FileHandler(f"worker_{local_rank}.log"))
-    loggertest.debug(f"Worker {local_rank} started")
+    loggertest.debug(f"Worker {local_rank} started")"""
     has_gpu = torch.cuda.is_available()
     if has_gpu:
         assert num_gpus_per_machine <= torch.cuda.device_count()
     global_rank = machine_rank * num_gpus_per_machine + local_rank
+    #Changed backend line backend="NCCL" if has_gpu else "GLOO", to "GLOO"
     try:
-        loggertest.debug(f"trying dist.init_process group")
         dist.init_process_group(
             backend="GLOO",
             init_method=dist_url,
@@ -112,19 +112,14 @@ def _distributed_worker(
             timeout=timeout,
         )
     except Exception as e:
-        loggertest.debug(f"got error {e}")
         logger = logging.getLogger(__name__)
         logger.error("Process group URL: {}".format(dist_url))
         raise e
-    loggertest.debug(f"succeeded init_process group")
     # Setup the local process group.
     comm.create_local_process_group(num_gpus_per_machine)
-    loggertest.debug(f"created local process group")
     if has_gpu:
         torch.cuda.set_device(local_rank)
-    loggertest.debug(f"set gpu")
     # synchronize is needed here to prevent a possible timeout after calling init_process_group
     # See: https://github.com/facebookresearch/maskrcnn-benchmark/issues/172
     comm.synchronize()
-    loggertest.debug(f"prun main func")
     main_func(*args)

@@ -460,7 +460,7 @@ class WSTrainer(TrainerBase):
         """
         subnet_str = ""
         for _ in range(self.dynamic_bs):
-            subnet_settings = self.model.backbone.sample_active_subnet()
+            subnet_settings = self.model.module.backbone.sample_active_subnet()
             subnet_str += str(subnet_settings) + ", "
             loss_dict = self.model(data)
             if isinstance(loss_dict, torch.Tensor):
