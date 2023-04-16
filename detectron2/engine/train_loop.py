@@ -468,7 +468,7 @@ class WSTrainer(TrainerBase):
                 loss_dict = {"total_loss": loss_dict}
             else:
                 losses = sum(loss_dict.values())
-            wandb.log({f"loss for subnet {subnet_settings}": losses})
+            #wandb.log({f"loss for subnet {subnet_settings}": losses})
             losses.backward()
 
             self.after_backward()
