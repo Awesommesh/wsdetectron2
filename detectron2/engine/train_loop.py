@@ -459,18 +459,18 @@ class WSTrainer(TrainerBase):
         """
         Iterate over 4 subnets
         """
-        logger.info("iterating subnets")
-        subnet_str = ""
+        #logger.info("iterating subnets")
+        #subnet_str = ""
         losses = 0
         loss_dict_total = {}
         for i in range(self.dynamic_bs):
             if i == 0:
-                logger.info(f"setting to max_net {type(self.model)}, {type(self.model.module)}")
+                #logger.info(f"setting to max_net {type(self.model)}, {type(self.model.module)}")
                 subnet_settings = self.model.module.backbone.set_max_net()
             else:
                 subnet_settings = self.model.module.backbone.sample_active_subnet()
             logger.info(f"current subnet {subnet_settings}")
-            subnet_str += str(subnet_settings) + ", "
+            #subnet_str += str(subnet_settings) + ", "
             loss_dict = self.model(data)
             if isinstance(loss_dict, torch.Tensor):
                 losses += loss_dict
