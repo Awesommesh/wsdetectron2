@@ -494,7 +494,7 @@ class WSTrainer(TrainerBase):
         wrap the optimizer with your custom `step()` method. But it is
         suboptimal as explained in https://arxiv.org/abs/2006.15704 Sec 3.2.4
         """
-        logging.info(subnet_str)
+        #logging.info(subnet_str)
         self.optimizer.step()
 
     @property
