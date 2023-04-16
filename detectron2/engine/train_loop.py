@@ -461,6 +461,8 @@ class WSTrainer(TrainerBase):
         """
         logger.info("iterating subnets")
         subnet_str = ""
+        losses = 0
+        loss_dict_total = {}
         for i in range(self.dynamic_bs):
             if i == 0:
                 logger.info(f"setting to max_net {type(self.model)}, {type(self.model.module)}")
@@ -471,16 +473,19 @@ class WSTrainer(TrainerBase):
             subnet_str += str(subnet_settings) + ", "
             loss_dict = self.model(data)
             if isinstance(loss_dict, torch.Tensor):
-                losses = loss_dict
+                losses += loss_dict
                 loss_dict = {"total_loss": loss_dict}
             else:
-                losses = sum(loss_dict.values())
+                losses += sum(loss_dict.values())
+
+            for key, value in loss_dict:
+                loss_dict_total[key] += value
             #wandb.log({f"loss for subnet {subnet_settings}": losses})
-            losses.backward()
+        losses.backward()
 
-            self.after_backward()
+        self.after_backward()
 
-            self._write_metrics(loss_dict, data_time)
+        self._write_metrics(loss_dict, data_time)
 
         """
         If you need gradient clipping/scaling or other processing, you can

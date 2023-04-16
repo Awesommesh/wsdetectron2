@@ -470,6 +470,10 @@ class ResNet(Backbone):
 
     def set_max_net(self):
         self.set_active_subnet(depth_list=[max(d) for d in self.DEPTH_LIST])
+        arch_config = {
+            "depth_list": [max(d) for d in self.DEPTH_LIST]
+        }
+        return arch_config
 
     #d has to be well formatted list of same length as number of stages with valid depth settings
     def set_active_subnet(self, depth_list=None, **kwargs):
