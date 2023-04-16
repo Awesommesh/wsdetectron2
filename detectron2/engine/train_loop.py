@@ -479,6 +479,8 @@ class WSTrainer(TrainerBase):
                 losses += sum(loss_dict.values())
 
             for key, value in loss_dict.items():
+                if key not in loss_dict_total:
+                    loss_dict_total[key] = 0
                 loss_dict_total[key] += value
             #wandb.log({f"loss for subnet {subnet_settings}": losses})
         losses.backward()
