@@ -900,9 +900,12 @@ class DefaultWSTrainer(TrainerBase):
         Returns:
             OrderedDict of results, if evaluation is enabled. Otherwise None.
         """
-        self._trainer.model.module.backbone.set_max_net()
+        logger = logging.getLogger(__name__)
+        logger.info("Start training")
         super().train(self.start_iter, self.max_iter)
+        logger.info("finished training")
         self._trainer.model.module.backbone.set_max_net()
+        logger.info("set back to max net")
         if len(self.cfg.TEST.EXPECTED_RESULTS) and comm.is_main_process():
             assert hasattr(
                 self, "_last_eval_results"
