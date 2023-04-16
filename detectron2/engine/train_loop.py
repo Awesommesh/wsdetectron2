@@ -441,6 +441,7 @@ class WSTrainer(TrainerBase):
         """
         Implement the standard training logic described above.
         """
+        logger = logging.getLogger(__name__)
         assert self.model.training, "[SimpleTrainer] model was changed to eval mode!"
         start = time.perf_counter()
         """
@@ -458,12 +459,14 @@ class WSTrainer(TrainerBase):
         """
         Iterate over 4 subnets
         """
+        logger.info("iterating subnets")
         subnet_str = ""
         for i in range(self.dynamic_bs):
             if i == 0:
                 subnet_settings = self.model.module.backbone.set_max_net()
             else:
                 subnet_settings = self.model.module.backbone.sample_active_subnet()
+            logger.info(f"current subnet {subnet_settings}")
             subnet_str += str(subnet_settings) + ", "
             loss_dict = self.model(data)
             if isinstance(loss_dict, torch.Tensor):
