@@ -436,6 +436,7 @@ class WSTrainer(TrainerBase):
         self.optimizer = optimizer
         self.gather_metric_period = gather_metric_period
         self.dynamic_bs = dynamic_bs
+        self.seed = 0
 
     def run_step(self):
         """
@@ -463,6 +464,8 @@ class WSTrainer(TrainerBase):
         #subnet_str = ""
         losses = 0
         loss_dict_total = {}
+        random.seed(self.seed)
+        self.seed += 1
         for i in range(self.dynamic_bs):
             if i == 0:
                 #logger.info(f"setting to max_net {type(self.model)}, {type(self.model.module)}")
@@ -483,19 +486,18 @@ class WSTrainer(TrainerBase):
                     loss_dict_total[key] = 0
                 loss_dict_total[key] += value
             #wandb.log({f"loss for subnet {subnet_settings}": losses})
-        losses.backward()
+            losses.backward()
 
-        self.after_backward()
+            self.after_backward()
 
+            """
+            If you need gradient clipping/scaling or other processing, you can
+            wrap the optimizer with your custom `step()` method. But it is
+            suboptimal as explained in https://arxiv.org/abs/2006.15704 Sec 3.2.4
+            """
+            #logging.info(subnet_str)
+            self.optimizer.step()
         self._write_metrics(loss_dict, data_time)
-
-        """
-        If you need gradient clipping/scaling or other processing, you can
-        wrap the optimizer with your custom `step()` method. But it is
-        suboptimal as explained in https://arxiv.org/abs/2006.15704 Sec 3.2.4
-        """
-        #logging.info(subnet_str)
-        self.optimizer.step()
 
     @property
     def _data_loader_iter(self):
