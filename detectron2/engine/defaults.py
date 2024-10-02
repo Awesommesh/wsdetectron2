@@ -1016,6 +1016,7 @@ Alternatively, you can call evaluation functions yourself (see Colab balloon tut
             dict: a dict of result metrics
         """
         logger = logging.getLogger(__name__)
+        model.set_max_net()
         if isinstance(evaluators, DatasetEvaluator):
             evaluators = [evaluators]
         if evaluators is not None:
