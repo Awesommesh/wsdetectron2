@@ -24,6 +24,7 @@ from torch.nn.parallel import DistributedDataParallel
 import detectron2.data.transforms as T
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import CfgNode, LazyConfig
+from detectron2.structures import ImageList
 from detectron2.data import (
     MetadataCatalog,
     build_detection_test_loader,
@@ -849,6 +850,9 @@ class DefaultSNNETTrainer(TrainerBase):
 
     def init_stich_layers(self):
         data = next(self._trainer._data_loader_iter)
+        images = [x["image"].to(self._trainer.model.module.device) for x in data]
+        images = [(x - self._trainer.model.module.pixel_mean) / self._trainer.model.module.pixel_std for x in images]
+        images = ImageList.from_tensors(images, self.size_divisibility)
         self._trainer.model.module.backbone.initialize_stitching_weights(data)
 
     def build_hooks(self):
