@@ -54,7 +54,8 @@ __all__ = [
     "default_writers",
     "DefaultPredictor",
     "DefaultTrainer",
-    "DefaultWSTrainer"
+    "DefaultWSTrainer",
+    "DefaultSNNETTrainer",
 ]
 
 
