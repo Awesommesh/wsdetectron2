@@ -799,7 +799,7 @@ class DefaultSNNETTrainer(TrainerBase):
 
         model = create_ddp_model(model, broadcast_buffers=False)
         self._trainer = SNNETTrainer(
-            model, data_loader, optimizer, cfg.WS.DYNAMIC_BS
+            model, data_loader, optimizer
         )
 
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
@@ -845,6 +845,10 @@ class DefaultSNNETTrainer(TrainerBase):
             logger.info("Loading stichnet weights from existing SNNET checkpoint directly")
         else:
             logger.info("Loading stichnet weights from individual anchor checkpoints")
+
+    def init_stich_layers(self):
+        data = next(self._trainer._data_loader_iter)
+        self._trainer.model.backbone.initialize_stitching_weights(data)
 
     def build_hooks(self):
         """
@@ -915,9 +919,6 @@ class DefaultSNNETTrainer(TrainerBase):
         logger = logging.getLogger(__name__)
         logger.info("Start training")
         super().train(self.start_iter, self.max_iter)
-        logger.info("finished training")
-        self._trainer.model.module.backbone.set_max_net()
-        logger.info("set back to max net")
         if len(self.cfg.TEST.EXPECTED_RESULTS) and comm.is_main_process():
             assert hasattr(
                 self, "_last_eval_results"
