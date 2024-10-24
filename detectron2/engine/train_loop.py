@@ -648,7 +648,7 @@ class SNNETTrainer(TrainerBase):
         loss_dict_total = {}
         stitchnet_id = self.model.module.backbone.sample_random_stitch_config()
         logger.info(f"current config id {stitchnet_id}")
-
+        print(f"current config id {stitchnet_id}, comb: {self.model.module.backbone.stitch_configs[stitchnet_id]['comb_id']}")
         loss_dict = self.model(data)
         if isinstance(loss_dict, torch.Tensor):
             losses += loss_dict

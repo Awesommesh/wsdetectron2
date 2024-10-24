@@ -804,12 +804,7 @@ class DefaultSNNETTrainer(TrainerBase):
             model, data_loader, optimizer
         )
 
-        self.scheduler = self.build_lr_scheduler(cfg, optimizer)
-        if not cfg.MODEL.WEIGHTS:
-            for i, anchor_name in enumerate(["TINY", "SMALL", "BASE"]):
-                logger.info(f"loading anchor {anchor_name} index {i}")
-                temp_checkpointer = DetectionCheckpointer(self.model.backbone.anchors[i])
-                temp_checkpointer.load(cfg.MODEL.SWIN[anchor_name].WEIGHTS)
+        self.scheduler = self.build_lr_scheduler(cfg, optimizer)            
 
         self.checkpointer = DetectionCheckpointer(
             # Assume you want to save checkpoints together with logs/statistics
@@ -847,6 +842,10 @@ class DefaultSNNETTrainer(TrainerBase):
             logger.info("Loading stichnet weights from existing SNNET checkpoint directly")
         else:
             logger.info("Loading stichnet weights from individual anchor checkpoints")
+            for i, anchor_name in enumerate(["TINY", "SMALL", "BASE"]):
+                logger.info(f"loading anchor {anchor_name} index {i}")
+                temp_checkpointer = DetectionCheckpointer(self._trainer.module.model.backbone.anchors[i])
+                temp_checkpointer.load(self.cfg.MODEL.SWIN[anchor_name].WEIGHTS)
 
     def init_stich_layers(self):
         data = next(self._trainer._data_loader_iter)
