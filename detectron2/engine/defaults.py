@@ -844,7 +844,7 @@ class DefaultSNNETTrainer(TrainerBase):
             logger.info("Loading stichnet weights from individual anchor checkpoints")
             for i, anchor_name in enumerate(["TINY", "SMALL", "BASE"]):
                 logger.info(f"loading anchor {anchor_name} index {i}")
-                temp_checkpointer = DetectionCheckpointer(self._trainer.module.model.backbone.anchors[i])
+                temp_checkpointer = DetectionCheckpointer(self._trainer.model.module.backbone.anchors[i])
                 temp_checkpointer.load(self.cfg.MODEL.SWIN[anchor_name].WEIGHTS)
 
     def init_stich_layers(self):
