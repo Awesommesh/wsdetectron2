@@ -796,7 +796,11 @@ class DefaultSNNETTrainer(TrainerBase):
         # Assume these objects must be constructed in this order.
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
-        data_loader = self.build_train_loader(cfg)
+        data_loader = self.build_train_loader(cfg)\
+        
+        #initialize stitch layers
+        data = next(iter(data_loader))
+        model.backbone.initialize_stitching_weights(data)
 
         model = create_ddp_model(model, broadcast_buffers=False)
         self._trainer = SNNETTrainer(
@@ -845,11 +849,7 @@ class DefaultSNNETTrainer(TrainerBase):
                 self.start_iter = self.iter + 1
             logger.info("Loading stichnet weights from existing SNNET checkpoint directly")
         else:
-            logger.info("Loading stichnet weights from individual anchor checkpoints")
-
-    def init_stich_layers(self):
-        data = next(self._trainer._data_loader_iter)
-        self._trainer.model.backbone.initialize_stitching_weights(data)
+            logger.info("Loading stichnet weights from individual anchor checkpoints")        
 
     def build_hooks(self):
         """

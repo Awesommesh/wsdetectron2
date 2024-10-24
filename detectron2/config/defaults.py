@@ -651,5 +651,3 @@ _C.GLOBAL.HACK = 1.0
 
 _C.WS = CN()
 _C.WS.DYNAMIC_BS = 4
-
-_C.SWIN_SNNET = CN()
