@@ -852,7 +852,7 @@ class DefaultSNNETTrainer(TrainerBase):
         data = next(self._trainer._data_loader_iter)
         images = [x["image"].to(self._trainer.model.module.device) for x in data]
         images = [(x - self._trainer.model.module.pixel_mean) / self._trainer.model.module.pixel_std for x in images]
-        images = ImageList.from_tensors(images, self.size_divisibility)
+        images = ImageList.from_tensors(images, self._trainer.model.module.size_divisibility)
         self._trainer.model.module.backbone.initialize_stitching_weights(data)
 
     def build_hooks(self):
