@@ -466,9 +466,9 @@ class WSTrainer(TrainerBase):
         for i in range(self.dynamic_bs):
             if i == 0:
                 #logger.info(f"setting to max_net {type(self.model)}, {type(self.model.module)}")
-                subnet_settings = self.model.module.backbone.set_max_net()
+                subnet_settings = self.model.module.set_max_net()
             else:
-                subnet_settings = self.model.module.backbone.sample_active_subnet()
+                subnet_settings = self.model.module.sample_active_subnet()
             logger.info(f"current subnet {subnet_settings}")
             #subnet_str += str(subnet_settings) + ", "
             loss_dict = self.model(data)

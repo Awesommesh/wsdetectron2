@@ -18,6 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 
+
 from detectron2.modeling.backbone.backbone import Backbone
 
 _to_2tuple = nn.modules.utils._ntuple(2)
@@ -415,13 +416,15 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x, H, W):
+    def forward(self, x, H, W, extract_feat=False, start=None, end=None):
         """Forward function.
         Args:
             x: Input feature, tensor size (B, H*W, C).
             H, W: Spatial resolution of the input feature.
         """
-
+        features = {}
+        if extract_feat:
+            features[-1] = x.detach()
         # calculate attention mask for SW-MSA
         Hp = int(np.ceil(H / self.window_size)) * self.window_size
         Wp = int(np.ceil(W / self.window_size)) * self.window_size
@@ -451,18 +454,29 @@ class BasicLayer(nn.Module):
             attn_mask == 0, float(0.0)
         )
 
-        for blk in self.blocks:
+        for i, blk in enumerate(self.blocks):
+            if start is not None and i < start:
+                continue
             blk.H, blk.W = H, W
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x, attn_mask)
             else:
                 x = blk(x, attn_mask)
-        if self.downsample is not None:
+
+            if extract_feat:
+                features[i] = x.detach()
+            if end is not None and i == end:
+                break
+        layer_out = None
+        if end is None and self.downsample is not None:
             x_down = self.downsample(x, H, W)
             Wh, Ww = (H + 1) // 2, (W + 1) // 2
-            return x, H, W, x_down, Wh, Ww
+            layer_out = [x, H, W, x_down, Wh, Ww]
         else:
-            return x, H, W, x, H, W
+            layer_out = [x, H, W, x, H, W]
+        if extract_feat:
+            layer_out.append(features)
+        return tuple(layer_out)
 
 
 class PatchEmbed(nn.Module):
@@ -635,6 +649,29 @@ class SwinTransformer(Backbone):
 
         self.apply(self._init_weights)
 
+    def forward_patch_embed(self, x):
+        x = self.patch_embed(x)
+        Wh, Ww = x.size(2), x.size(3)
+        if self.ape:
+            absolute_pos_embed = F.interpolate(
+                self.absolute_pos_embed, size=(Wh, Ww), mode="bicubic"
+            )
+            x = (x + absolute_pos_embed).flatten(2).transpose(1, 2)  # B Wh*Ww C
+        else:
+            x = x.flatten(2).transpose(1, 2)
+        x = self.pos_drop(x)
+        return x
+
+    def extract_block_features(self, x):
+        features = {}
+        x = self.forward_patch_embed(x)
+        outs = {}
+        for i in range(self.num_layers):
+            layer = self.layers[i]
+            x_out, H, W, x, Wh, Ww, features = layer(x, Wh, Ww, extract_feat=True)
+            features[i] = features
+        return features
+
     def _freeze_stages(self):
         if self.frozen_stages >= 0:
             self.patch_embed.eval()
@@ -664,6 +701,68 @@ class SwinTransformer(Backbone):
     @property
     def size_divisibility(self):
         return self._size_divisibility
+
+    def get_model_size_util(self, stage_id, blk_id):
+        total_params = 0
+        total_params += sum(p.numel() for p in self.patch_embed.parameters())
+        for i, layer in enumerate(self.layers):
+            cut = blk_id+1 if i == stage_id else len(layer.blocks)
+            total_params += sum(p.numel() for p in layer.blocks[:cut].parameters())
+            if i == stage_id:
+                break
+        return total_params
+
+    def get_model_size_from(self, stage_id, blk_id):
+        total_params = 0
+        for i, layer in enumerate(self.layers):
+            if i < stage_id:
+                continue
+            cut = blk_id if i == stage_id else 0
+            total_params += sum(p.numel() for p in layer.blocks[cut:].parameters())
+            if layer.downsample:
+                total_params += sum(p.numel() for p in layer.downsample.parameters())
+
+        total_params += sum(p.numel() for p in self.norm.parameters())
+        total_params += sum(p.numel() for p in self.head.parameters())
+        return total_params
+
+    def forward_until(self, x, stage_id, blk_id):
+        x = self.patch_embed(x)
+
+        Wh, Ww = x.size(2), x.size(3)
+        if self.ape:
+            absolute_pos_embed = F.interpolate(
+                self.absolute_pos_embed, size=(Wh, Ww), mode="bicubic"
+            )
+            x = (x + absolute_pos_embed).flatten(2).transpose(1, 2)  # B Wh*Ww C
+        else:
+            x = x.flatten(2).transpose(1, 2)
+        x = self.pos_drop(x)
+        outs = {}
+        for i, layer in enumerate(self.layers):
+            x_out, H, W, x, Wh, Ww = layer(x, end=blk_id if i == stage_id else None)
+            if i in self.out_indices:
+                norm_layer = getattr(self, f"norm{i}")
+                x_out = norm_layer(x_out)
+
+                out = x_out.view(-1, H, W, self.num_features[i]).permute(0, 3, 1, 2).contiguous()
+                outs["p{}".format(i)] = out
+            if i == stage_id:
+                break
+        return x, outs
+    
+    def forward_from(self, x, stage_id, blk_id, outs):
+        for i, layer in enumerate(self.layers):
+            if i < stage_id:
+                continue
+            x_out, H, W, x, Wh, Ww = layer(x, start=blk_id if i == stage_id else None)
+            if i in self.out_indices:
+                norm_layer = getattr(self, f"norm{i}")
+                x_out = norm_layer(x_out)
+
+                out = x_out.view(-1, H, W, self.num_features[i]).permute(0, 3, 1, 2).contiguous()
+                outs["p{}".format(i)] = out
+        return outs
 
     def forward(self, x):
         """Forward function."""
